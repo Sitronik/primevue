@@ -23,6 +23,7 @@
 <!--    />-->
     <input
         :id="id"
+        class="p-inputtext p-component"
         :class="inputClass"
         :readonly="readonly"
         :disabled="disabled"
