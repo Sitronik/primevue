@@ -1,11 +1,32 @@
 <template>
-    <InputText
+<!--    <InputText-->
+<!--        :id="id"-->
+<!--        :value="currentVal"-->
+<!--        :class="inputClass"-->
+<!--        :readonly="readonly"-->
+<!--        :disabled="disabled"-->
+<!--        :invalid="invalid"-->
+<!--        :size="size"-->
+<!--        :name="name"-->
+<!--        :variant="variant"-->
+<!--        :placeholder="placeholder"-->
+<!--        :fluid="$fluid"-->
+<!--        :unstyled="unstyled"-->
+<!--        @input="onInput"-->
+<!--        @compositionend="onInput"-->
+<!--        @focus="onFocus"-->
+<!--        @blur="onBlur"-->
+<!--        @keydown="onKeyDown"-->
+<!--        @keypress="onKeyPress"-->
+<!--        @paste="onPaste"-->
+<!--        :pt="rootPTOptions"-->
+<!--    />-->
+    <input
         :id="id"
-        :value="currentVal"
         :class="inputClass"
         :readonly="readonly"
         :disabled="disabled"
-        :invalid="invalid"
+        :aria-invalid="invalid || undefined"
         :size="size"
         :name="name"
         :variant="variant"
@@ -13,35 +34,25 @@
         :fluid="$fluid"
         :unstyled="unstyled"
         @input="onInput"
-        @compositionend="onInput"
         @focus="onFocus"
         @blur="onBlur"
         @keydown="onKeyDown"
         @keypress="onKeyPress"
         @paste="onPaste"
-        :pt="rootPTOptions"
+        v-bind="ptmi('root', ptmParams)"
     />
 </template>
 
 <script>
-import { getUserAgent } from '@primeuix/utils/dom';
-import InputText from 'primevue/inputtext';
-import { mergeProps } from 'vue';
+// import InputText from 'primevue/inputtext';
+import { getUserAgent  } from '@primeuix/utils/dom';
 import BaseInputMask from './BaseInputMask.vue';
 
 export default {
     name: 'InputMask',
     extends: BaseInputMask,
     inheritAttrs: false,
-    emits: ['focus', 'blur', 'keydown', 'complete', 'keypress', 'paste'],
-    inject: {
-        $pcFluid: { default: null }
-    },
-    data() {
-        return {
-            currentVal: ''
-        };
-    },
+    emits: ['update:modelValue', 'focus', 'blur', 'keydown', 'complete', 'keypress', 'paste'],
     watch: {
         mask(newMask, oldMask) {
             if (oldMask !== newMask) {
@@ -59,14 +70,10 @@ export default {
     },
     methods: {
         onInput(event) {
-            // Check if the event is part of a text composition process (e.g., for Asian languages).
-            // If event.isComposing is true, it means the user is still composing text and the input is not finalized.
-            if (!event.isComposing) {
-                if (this.androidChrome) this.handleAndroidInput(event);
-                else this.handleInputChange(event);
+            if (this.androidChrome) this.handleAndroidInput(event);
+            else this.handleInputChange(event);
 
-                this.updateModelValue(event.target.value);
-            }
+            this.$emit('update:modelValue', event.target.value);
         },
         onFocus(event) {
             if (this.readonly) {
@@ -101,7 +108,7 @@ export default {
         onBlur(event) {
             this.focus = false;
             this.checkVal();
-            this.updateModelValue(event.target.value);
+            this.updateModel(event);
 
             if (this.$el.value !== this.focusText) {
                 let e = document.createEvent('HTMLEvents');
@@ -111,7 +118,6 @@ export default {
             }
 
             this.$emit('blur', event);
-            this.formField.onBlur?.(event);
         },
         onKeyDown(event) {
             if (this.readonly) {
@@ -139,18 +145,18 @@ export default {
 
                 this.clearBuffer(begin, end);
                 this.shiftL(begin, end - 1);
-                this.updateModelValue(event.target.value);
+                this.updateModel(event);
 
                 event.preventDefault();
             } else if (k === 'Enter') {
                 // enter
                 this.$el.blur();
-                this.updateModelValue(event.target.value);
+                this.updateModel(event);
             } else if (k === 'Escape') {
                 // escape
                 this.$el.value = this.focusText;
                 this.caret(0, this.checkVal());
-                this.updateModelValue(event.target.value);
+                this.updateModel(event);
                 event.preventDefault();
             }
 
@@ -209,7 +215,7 @@ export default {
                 event.preventDefault();
             }
 
-            this.updateModelValue(event.target.value);
+            this.updateModel(event);
 
             if (completed) {
                 this.$emit('complete', event);
@@ -426,7 +432,7 @@ export default {
             var pos = this.checkVal(true);
 
             this.caret(pos);
-            this.updateModelValue(event.target.value);
+            this.updateModel(event);
 
             if (this.isCompleted()) {
                 this.$emit('complete', event);
@@ -445,21 +451,18 @@ export default {
 
             return unmaskedBuffer.join('');
         },
+        updateModel(e) {
+            let val = this.unmask ? this.getUnmaskedValue() : e.target.value;
 
-        updateModelValue(value) {
-            const val = this.unmask ? this.getUnmaskedValue() : value;
-
-            this.currentVal = value;
-
-            this.writeValue(this.defaultBuffer !== val ? val : '');
+            this.$emit('update:modelValue', this.defaultBuffer !== val ? val : '');
         },
         updateValue(updateModel = true) {
             if (this.$el) {
-                if (this.d_value == null) {
+                if (this.modelValue == null) {
                     this.$el.value = '';
-                    updateModel && this.updateModelValue('');
+                    updateModel && this.$emit('update:modelValue', '');
                 } else {
-                    this.$el.value = this.d_value;
+                    this.$el.value = this.modelValue;
                     this.checkVal();
 
                     setTimeout(() => {
@@ -467,7 +470,11 @@ export default {
                             this.writeBuffer();
                             this.checkVal();
 
-                            if (updateModel) this.updateModelValue(this.$el.value);
+                            if (updateModel) {
+                                let val = this.unmask ? this.getUnmaskedValue() : this.$el.value;
+
+                                this.$emit('update:modelValue', this.defaultBuffer !== val ? val : '');
+                            }
                         }
                     }, 10);
                 }
@@ -528,28 +535,24 @@ export default {
             this.updateValue(false);
         },
         isValueUpdated() {
-            return this.unmask ? this.d_value != this.getUnmaskedValue() : this.defaultBuffer !== this.$el.value && this.$el.value !== this.d_value;
+            return this.unmask ? this.modelValue != this.getUnmaskedValue() : this.defaultBuffer !== this.$el.value && this.$el.value !== this.modelValue;
         }
     },
     computed: {
         inputClass() {
             return [this.cx('root'), this.class];
         },
-        rootPTOptions() {
-            return {
-                root: mergeProps(this.ptm('pcInputText', this.ptmParams), this.ptmi('root', this.ptmParams))
-            };
+        filled() {
+            return this.modelValue != null && this.modelValue.toString().length > 0;
         },
         ptmParams() {
             return {
                 context: {
-                    filled: this.$filled
+                    filled: this.filled,
+                    disabled: this.$attrs.disabled || this.$attrs.disabled === ''
                 }
             };
         }
-    },
-    components: {
-        InputText
     }
 };
 </script>
